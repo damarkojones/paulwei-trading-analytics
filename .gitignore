@@ -38,6 +38,12 @@ okx_wallet_history.csv
 okx_positions_history.csv
 okx_account_summary.json
 
+# Bybit 交易數據 (根目錄)
+bybit_executions.csv
+bybit_wallet_history.csv
+bybit_closed_pnl.csv
+bybit_account_summary.json
+
 # K 線數據 (data/ohlcv/)
 /data/ohlcv/*.csv
 

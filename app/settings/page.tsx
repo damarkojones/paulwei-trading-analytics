@@ -362,8 +362,8 @@ export default function SettingsPage() {
                                     <h2 className="text-lg font-semibold text-white">Exchange</h2>
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-3">
-                                    {(['bitmex', 'binance', 'okx'] as ExchangeType[]).map((ex) => (
+                                <div className="grid grid-cols-4 gap-3">
+                                    {(['bitmex', 'binance', 'okx', 'bybit'] as ExchangeType[]).map((ex) => (
                                         <button
                                             key={ex}
                                             onClick={() => {
@@ -385,7 +385,8 @@ export default function SettingsPage() {
                                             <p className="text-xs text-zinc-400 mt-1 text-left">
                                                 {ex === 'bitmex' ? 'BTC/ETH Perpetuals' :
                                                     ex === 'binance' ? 'USDT-M Futures' :
-                                                        'Unified Trading'}
+                                                        ex === 'okx' ? 'Unified Trading' :
+                                                            'USDT Perpetuals'}
                                             </p>
                                         </button>
                                     ))}
@@ -404,7 +405,9 @@ export default function SettingsPage() {
                                             ? 'https://www.bitmex.com/app/apiKeys'
                                             : exchange === 'binance'
                                                 ? 'https://www.binance.com/en/my/settings/api-management'
-                                                : 'https://www.okx.com/account/my-api'
+                                                : exchange === 'okx'
+                                                    ? 'https://www.okx.com/account/my-api'
+                                                    : 'https://www.bybit.com/app/user/api-management'
                                         }
                                         target="_blank"
                                         rel="noopener noreferrer"

@@ -19,7 +19,7 @@ interface MonthlyPnLChartProps {
 export function MonthlyPnLChart({ data, exchange = 'bitmex' }: MonthlyPnLChartProps) {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
-    const currencyUnit = (exchange === 'binance' || exchange === 'okx') ? 'USDT' : 'BTC';
+    const currencyUnit = (exchange === 'binance' || exchange === 'okx' || exchange === 'bybit') ? 'USDT' : 'BTC';
 
     useEffect(() => {
         if (!chartContainerRef.current || data.length === 0) return;

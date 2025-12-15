@@ -1,6 +1,6 @@
 // ============ Exchange Types ============
 
-export type ExchangeType = 'bitmex' | 'binance' | 'okx';
+export type ExchangeType = 'bitmex' | 'binance' | 'okx' | 'bybit';
 
 export interface ExchangeConfig {
     exchange: ExchangeType;
@@ -36,12 +36,22 @@ const OKX_SYMBOL_MAP: Record<string, string> = {
     'ETH-USD-SWAP': 'ETHUSD',
 };
 
+const BYBIT_SYMBOL_MAP: Record<string, string> = {
+    'BTCUSDT': 'BTCUSDT',
+    'ETHUSDT': 'ETHUSDT',
+    'BTCUSD': 'BTCUSD',
+    'ETHUSD': 'ETHUSD',
+};
+
 export function formatSymbol(symbol: string, exchange: ExchangeType = 'bitmex'): string {
     if (exchange === 'bitmex') {
         return BITMEX_SYMBOL_MAP[symbol] || symbol.replace('XBT', 'BTC');
     }
     if (exchange === 'okx') {
         return OKX_SYMBOL_MAP[symbol] || symbol.replace('-SWAP', '').replace('-', '');
+    }
+    if (exchange === 'bybit') {
+        return BYBIT_SYMBOL_MAP[symbol] || symbol;
     }
     return BINANCE_SYMBOL_MAP[symbol] || symbol;
 }
@@ -56,6 +66,10 @@ export function toInternalSymbol(displaySymbol: string, exchange: ExchangeType =
         if (displaySymbol === 'ETHUSDT') return 'ETH-USDT-SWAP';
         if (displaySymbol === 'BTCUSD') return 'BTC-USD-SWAP';
         if (displaySymbol === 'ETHUSD') return 'ETH-USD-SWAP';
+    }
+    if (exchange === 'bybit') {
+        // Bybit uses same format as display
+        return displaySymbol;
     }
     return displaySymbol;
 }
@@ -181,6 +195,7 @@ export interface ImportResult {
         trades: number;
         orders: number;
         walletHistory: number;
+        closedPnl?: number;  // Bybit closed PnL records
     };
     error?: string;
 }
@@ -191,11 +206,13 @@ export const EXCHANGE_SYMBOLS: Record<ExchangeType, string[]> = {
     bitmex: ['BTCUSD', 'ETHUSD'],
     binance: ['BTCUSDT', 'ETHUSDT', 'BTCUSD_PERP', 'ETHUSD_PERP'],
     okx: ['BTC-USDT-SWAP', 'ETH-USDT-SWAP', 'BTC-USD-SWAP', 'ETH-USD-SWAP'],
+    bybit: ['BTCUSDT', 'ETHUSDT', 'BTCUSD', 'ETHUSD'],
 };
 
 export const EXCHANGE_DISPLAY_NAMES: Record<ExchangeType, string> = {
     bitmex: 'BitMEX',
     binance: 'Binance Futures',
     okx: 'OKX',
+    bybit: 'Bybit',
 };
 

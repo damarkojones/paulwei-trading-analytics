@@ -9,7 +9,7 @@
 
 ## ✨ v2.0 新功能
 
-- 🏦 **多交易所支援** - 支援 BitMEX、Binance Futures、OKX，未來將整合 Bybit 等更多交易所
+- 🏦 **多交易所支援** - 支援 BitMEX、Binance Futures、OKX、Bybit 等多家交易所
 - 🔑 **Read-Only API 導入** - 直接在平台上使用唯讀 API 安全下載您的交易數據
 - 🤖 **AI 交易分析** - 整合 GPT-4、Claude、Gemini，智能分析您的交易表現並提供改進建議
 - 📊 **優化倉位計算** - 更精準的倉位開平邏輯與 PnL 計算
@@ -70,7 +70,7 @@ npm run dev
 ### 方式一：透過平台介面導入（推薦）
 
 1. 點擊右上角的 ⚙️ **設定** 圖示進入數據導入頁面
-2. 選擇交易所（BitMEX、Binance Futures 或 OKX）
+2. 選擇交易所（BitMEX、Binance Futures、OKX 或 Bybit）
 3. 輸入 Read-Only API Key 和 API Secret（OKX 需額外輸入 Passphrase）
 4. OKX 用戶可選擇 Instrument Type（SWAP、FUTURES、MARGIN 或 ALL）
 5. 設定數據日期範圍
@@ -123,6 +123,15 @@ TradeVoyage/
 └── okx_account_summary.json    # 帳戶摘要
 ```
 
+**Bybit：**
+```
+TradeVoyage/
+├── bybit_executions.csv        # 成交執行記錄（必需）
+├── bybit_closed_pnl.csv        # 平倉損益記錄（精準倉位計算）
+├── bybit_wallet_history.csv    # 資金變動
+└── bybit_account_summary.json  # 帳戶摘要
+```
+
 ---
 
 ## 🔑 API Key 設定指南
@@ -166,6 +175,19 @@ TradeVoyage/
    - **ALL** - 同時查詢以上所有類型
 6. 複製 API Key、Secret Key 和 Passphrase
 
+### Bybit
+
+1. 前往 [Bybit API Management](https://www.bybit.com/app/user/api-management)
+2. 點擊「Create New Key」
+3. 選擇「API Transaction」
+4. 權限設定：
+   - ✅ **Read-Only** - 必須開啟
+   - ❌ Contract - Trade - 不需要
+   - ❌ Withdraw - 不需要
+5. 複製 API Key 和 Secret Key
+
+> ⚠️ **注意：** Bybit API 僅支援查詢最近 2 年的交易數據，每次請求最多抓取 7 天資料（系統會自動分批處理）。
+
 ---
 
 ## ️ 技術架構
@@ -206,7 +228,9 @@ TradeVoyage/
 │   ├── exchange_types.ts # 交易所類型定義
 │   ├── data_loader.ts    # 數據載入器（支援多交易所）
 │   ├── bitmex_exporter.ts   # BitMEX 數據導出
-│   └── binance_exporter.ts  # Binance 數據導出
+│   ├── binance_exporter.ts  # Binance 數據導出
+│   ├── okx_exporter.ts      # OKX 數據導出
+│   └── bybit_exporter.ts    # Bybit 數據導出
 ├── scripts/               # 數據抓取腳本
 │   └── export_all_data.js
 └── *.csv / *.json        # 交易數據檔案
@@ -234,7 +258,7 @@ npm run lint
 
 ## 🗺️ 未來規劃
 
-- [ ] 整合 Bybit 交易所
+- [x] ~~整合 Bybit 交易所~~ ✅ 已完成！
 - [x] ~~整合 OKX 交易所~~ ✅ 已完成！
 - [x] ~~AI 交易分析與建議~~ ✅ 已完成！
 - [ ] 多帳戶管理

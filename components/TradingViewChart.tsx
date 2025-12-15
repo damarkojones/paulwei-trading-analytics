@@ -207,7 +207,19 @@ function TradingViewChartInner({ symbol, trades = [], height = 500, focusTime }:
             return;
         }
 
-        const markers = currentTrades.map(trade => {
+        // Filter out trades with invalid datetime
+        const validTrades = currentTrades.filter(trade => {
+            if (!trade.datetime) return false;
+            const time = new Date(trade.datetime).getTime();
+            return !isNaN(time) && time > 0;
+        });
+
+        if (validTrades.length === 0) {
+            candleSeriesRef.current.setMarkers([]);
+            return;
+        }
+
+        const markers = validTrades.map(trade => {
             const tradeTime = Math.floor(new Date(trade.datetime).getTime() / 1000) as Time;
             // Use custom label if provided, otherwise default format
             const label = trade.label || `${trade.side.toUpperCase()} @ ${trade.price.toLocaleString()}`;

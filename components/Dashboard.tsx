@@ -319,6 +319,7 @@ export function Dashboard() {
                                 <option value="bitmex">BitMEX</option>
                                 <option value="binance">Binance</option>
                                 <option value="okx">OKX</option>
+                                <option value="bybit">Bybit</option>
                             </select>
                             <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-muted-foreground">
                                 <Database className="w-4 h-4" />

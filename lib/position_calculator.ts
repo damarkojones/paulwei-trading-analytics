@@ -532,10 +532,11 @@ export function calculatePositionSessionsFromExecutions(
     const firstSymbol = executions[0]?.symbol || '';
     const isBinance = exchangeId === 'binance' || isBinanceSymbol(firstSymbol);
     const isOkx = exchangeId === 'okx' || firstSymbol.includes('-SWAP') || firstSymbol.includes('-USDT-');
+    const isBybit = exchangeId === 'bybit';
 
-    // OKX and Binance both use hedge mode with positionSide (long/short)
-    if (isBinance || isOkx) {
-        console.log(`[Position Calculator] Using Binance/OKX calculator for ${exchangeId || 'auto-detected'}`);
+    // OKX, Binance, and Bybit all use hedge mode with positionSide (long/short)
+    if (isBinance || isOkx || isBybit) {
+        console.log(`[Position Calculator] Using Binance/OKX/Bybit calculator for ${exchangeId || 'auto-detected'}`);
         return calculateBinancePositionSessions(executions);
     } else {
         console.log('[Position Calculator] Using BitMEX calculator');

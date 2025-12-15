@@ -3,6 +3,7 @@ import { ExchangeConfig, ExchangeType, ImportResult } from '@/lib/exchange_types
 import { exportBitmexData, testBitmexConnection } from '@/lib/bitmex_exporter';
 import { exportBinanceData, testBinanceConnection } from '@/lib/binance_exporter';
 import { exportOkxData, testOkxConnection } from '@/lib/okx_exporter';
+import { exportBybitData, testBybitConnection } from '@/lib/bybit_exporter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,9 @@ export async function GET(request: NextRequest) {
                 break;
             case 'okx':
                 result = await testOkxConnection(apiKey, apiSecret, passphrase!);
+                break;
+            case 'bybit':
+                result = await testBybitConnection(apiKey, apiSecret);
                 break;
             default:
                 return NextResponse.json(
@@ -103,6 +107,9 @@ export async function POST(request: NextRequest) {
                 break;
             case 'okx':
                 result = await exportOkxData(config);
+                break;
+            case 'bybit':
+                result = await exportBybitData(config);
                 break;
             default:
                 return NextResponse.json(

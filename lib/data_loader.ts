@@ -22,6 +22,7 @@ export * from './types';
 function getFilePrefix(exchange: ExchangeType): string {
     if (exchange === 'binance') return 'binance_';
     if (exchange === 'okx') return 'okx_';
+    if (exchange === 'bybit') return 'bybit_';
     return 'bitmex_';
 }
 
@@ -59,12 +60,20 @@ const cacheStore: Record<ExchangeType, {
         accountSummary: null,
         sessions: null,
     },
+    bybit: {
+        executions: null,
+        trades: null,
+        orders: null,
+        wallet: null,
+        accountSummary: null,
+        sessions: null,
+    },
 };
 
 // ============ Clear Cache ============
 
 export function clearCache(exchange?: ExchangeType) {
-    const exchanges: ExchangeType[] = exchange ? [exchange] : ['bitmex', 'binance', 'okx'];
+    const exchanges: ExchangeType[] = exchange ? [exchange] : ['bitmex', 'binance', 'okx', 'bybit'];
     for (const ex of exchanges) {
         cacheStore[ex] = {
             executions: null,
@@ -271,6 +280,191 @@ export function loadAccountSummary(exchange: ExchangeType = 'bitmex'): AccountSu
     return cacheStore[exchange].accountSummary;
 }
 
+// ============ Bybit Closed PnL Loader ============
+
+interface BybitClosedPnlRecord {
+    symbol: string;
+    side: 'Buy' | 'Sell';  // Buy = Long position, Sell = Short position
+    qty: number;
+    orderPrice: number;
+    avgEntryPrice: number;
+    avgExitPrice: number;
+    closedPnl: number;
+    cumEntryValue: number;
+    cumExitValue: number;
+    orderId: string;
+    createdTime: string;
+    updatedTime: string;
+}
+
+function loadBybitClosedPnl(): BybitClosedPnlRecord[] {
+    const csvPath = path.join(process.cwd(), 'bybit_closed_pnl.csv');
+    if (!fs.existsSync(csvPath)) {
+        console.warn('bybit_closed_pnl.csv not found');
+        return [];
+    }
+
+    const fileContent = fs.readFileSync(csvPath, 'utf-8');
+    const records = parse(fileContent, { columns: true, skip_empty_lines: true, relax_quotes: true });
+
+    return records.map((record: any) => ({
+        symbol: record.symbol,
+        side: record.side as 'Buy' | 'Sell',
+        qty: parseFloat(record.qty) || 0,
+        orderPrice: parseFloat(record.orderPrice) || 0,
+        avgEntryPrice: parseFloat(record.avgEntryPrice) || 0,
+        avgExitPrice: parseFloat(record.avgExitPrice) || 0,
+        closedPnl: parseFloat(record.closedPnl) || 0,
+        cumEntryValue: parseFloat(record.cumEntryValue) || 0,
+        cumExitValue: parseFloat(record.cumExitValue) || 0,
+        orderId: record.orderId,
+        createdTime: record.createdTime,
+        updatedTime: record.updatedTime,
+    }));
+}
+
+// Convert Bybit Closed PnL records to PositionSessions
+// Combines closed PnL data with executions to get complete position info
+function convertBybitClosedPnlToSessions(records: BybitClosedPnlRecord[]): PositionSession[] {
+    // Load executions to find open times and individual trades
+    const executions = loadExecutionsFromCSV('bybit');
+
+    // Sort closed PnL by close time
+    const sorted = [...records].sort((a, b) =>
+        new Date(a.createdTime).getTime() - new Date(b.createdTime).getTime()
+    );
+
+    // Group executions by orderId for quick lookup
+    const execsByOrderId = new Map<string, Execution[]>();
+    executions.forEach(exec => {
+        const key = exec.orderID;
+        if (!execsByOrderId.has(key)) {
+            execsByOrderId.set(key, []);
+        }
+        execsByOrderId.get(key)!.push(exec);
+    });
+
+    // Group executions by symbol and side for finding open trades
+    const execsBySymbolSide = new Map<string, Execution[]>();
+    executions.forEach(exec => {
+        const key = `${exec.symbol}-${exec.side}`;
+        if (!execsBySymbolSide.has(key)) {
+            execsBySymbolSide.set(key, []);
+        }
+        execsBySymbolSide.get(key)!.push(exec);
+    });
+
+    return sorted.map((rec, idx) => {
+        // In Bybit closed PnL: 
+        // - Sell = closing a Long position (you sell to close long)
+        // - Buy = closing a Short position (you buy to close short)
+        const positionSide = rec.side === 'Sell' ? 'long' : 'short';
+
+        // The close order side matches the closed PnL 'side' field
+        // Open order side is the opposite
+        const closeOrderSide = rec.side;  // Sell for Long, Buy for Short
+        const openOrderSide = rec.side === 'Sell' ? 'Buy' : 'Sell';
+
+        // Find the close trade executions (matching orderId from closed PnL)
+        const closeExecs = execsByOrderId.get(rec.orderId) || [];
+        const closeTime = new Date(rec.createdTime).getTime();
+
+        // Find open trades for this specific position
+        // Strategy: Look for open trades with same symbol, opposite side, before close time
+        // Use avgEntryPrice to help identify matching open trades
+        const symbolOpenExecs = execsBySymbolSide.get(`${rec.symbol}-${openOrderSide}`) || [];
+
+        // Find open trades that are:
+        // 1. Before close time
+        // 2. Close to the avgEntryPrice (within 1% tolerance for the same position)
+        const priceTolerance = rec.avgEntryPrice * 0.01;
+        let matchingOpenExecs = symbolOpenExecs
+            .filter(e => {
+                const execTime = new Date(e.timestamp).getTime();
+                const priceMatch = Math.abs(e.lastPx - rec.avgEntryPrice) <= priceTolerance;
+                return execTime < closeTime && priceMatch;
+            })
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Most recent first
+
+        // If no price match found, fallback to finding most recent open before close
+        if (matchingOpenExecs.length === 0) {
+            matchingOpenExecs = symbolOpenExecs
+                .filter(e => new Date(e.timestamp).getTime() < closeTime)
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        }
+
+        // Find the open trade that matches this position's qty
+        // The open should have similar cumulative quantity
+        let openTime = '';
+        let openExecsForPosition: Execution[] = [];
+        let accumulatedQty = 0;
+
+        for (const exec of matchingOpenExecs) {
+            if (accumulatedQty >= rec.qty) break;
+            openExecsForPosition.push(exec);
+            accumulatedQty += exec.lastQty;
+        }
+
+        // Get open time from the earliest matching execution
+        if (openExecsForPosition.length > 0) {
+            openExecsForPosition.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            openTime = openExecsForPosition[0].timestamp;
+        }
+
+        // Calculate fees from executions if available, otherwise estimate
+        let totalFees = 0;
+        const allRelatedExecs = [...closeExecs, ...openExecsForPosition];
+        totalFees = allRelatedExecs.reduce((sum, e) => sum + (e.execComm / 100000000), 0);
+
+        // Fallback: estimate from closed PnL
+        if (totalFees === 0) {
+            const grossPnl = rec.cumExitValue - rec.cumEntryValue;
+            totalFees = Math.abs(grossPnl - rec.closedPnl);
+        }
+
+        // Calculate duration
+        const openTimeMs = openTime ? new Date(openTime).getTime() : 0;
+        const closeTimeMs = closeTime;
+        const durationMs = openTimeMs > 0 ? closeTimeMs - openTimeMs : 0;
+
+        // Convert executions to Trade format
+        const trades: Trade[] = closeExecs.map(e => ({
+            id: e.execID,
+            datetime: e.timestamp,
+            symbol: e.symbol,
+            displaySymbol: formatSymbol(e.symbol),
+            side: e.side.toLowerCase() as 'buy' | 'sell',
+            price: e.lastPx,
+            amount: e.lastQty,
+            cost: e.execCost / 100000000,
+            fee: { cost: e.execComm / 100000000, currency: 'USDT' },
+            orderID: e.orderID,
+            execType: e.execType,
+        }));
+
+        return {
+            id: rec.orderId || `bybit-session-${idx}`,
+            symbol: rec.symbol,
+            displaySymbol: formatSymbol(rec.symbol),
+            side: positionSide,
+            openTime: openTime,
+            closeTime: rec.createdTime,
+            durationMs: durationMs,
+            maxSize: rec.qty,
+            totalBought: positionSide === 'long' ? rec.qty : 0,
+            totalSold: positionSide === 'short' ? rec.qty : 0,
+            avgEntryPrice: rec.avgEntryPrice,
+            avgExitPrice: rec.avgExitPrice,
+            realizedPnl: rec.closedPnl,
+            totalFees: totalFees,
+            netPnl: rec.closedPnl,
+            tradeCount: closeExecs.length || 1,
+            trades: trades,
+            status: 'closed' as const,
+        };
+    });
+}
+
 // ============ Position Session Calculator (Server-side) ============
 
 import { calculatePositionSessionsFromExecutions } from './position_calculator';
@@ -278,7 +472,17 @@ import { calculatePositionSessionsFromExecutions } from './position_calculator';
 export function getPositionSessions(exchange: ExchangeType = 'bitmex'): PositionSession[] {
     if (cacheStore[exchange].sessions) return cacheStore[exchange].sessions!;
 
-    // Use executions directly for more accurate position tracking
+    // For Bybit, prefer using closed PnL data for more accurate position tracking
+    if (exchange === 'bybit') {
+        const closedPnlRecords = loadBybitClosedPnl();
+        if (closedPnlRecords.length > 0) {
+            cacheStore[exchange].sessions = convertBybitClosedPnlToSessions(closedPnlRecords);
+            console.log(`[bybit] Loaded ${cacheStore[exchange].sessions!.length} position sessions from closed PnL records`);
+            return cacheStore[exchange].sessions!;
+        }
+    }
+
+    // Fallback: Use executions for position tracking
     const executions = loadExecutionsFromCSV(exchange);
     cacheStore[exchange].sessions = calculatePositionSessionsFromExecutions(executions, exchange);
 

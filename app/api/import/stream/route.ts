@@ -3,6 +3,7 @@ import { ExchangeConfig } from '@/lib/exchange_types';
 import { exportBinanceDataWithProgress } from '@/lib/binance_exporter';
 import { exportBitmexDataWithProgress } from '@/lib/bitmex_exporter';
 import { exportOkxDataWithProgress } from '@/lib/okx_exporter';
+import { exportBybitDataWithProgress } from '@/lib/bybit_exporter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,6 +61,8 @@ export async function POST(request: NextRequest) {
                 result = await exportBitmexDataWithProgress(config, sendLog);
             } else if (exchange === 'okx') {
                 result = await exportOkxDataWithProgress(config, sendLog);
+            } else if (exchange === 'bybit') {
+                result = await exportBybitDataWithProgress(config, sendLog);
             } else {
                 await sendLog(`Unsupported exchange: ${exchange}`, 'error');
                 await writer.close();
