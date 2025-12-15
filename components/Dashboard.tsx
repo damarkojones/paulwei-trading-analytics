@@ -10,6 +10,7 @@ import { StatsOverview } from './StatsOverview';
 import { MonthlyPnLChart } from './MonthlyPnLChart';
 import { EquityCurve } from './EquityCurve';
 import TradingViewChart from './TradingViewChart';
+import { AIAnalysis } from './AIAnalysis';
 import {
     Loader2,
     ChevronLeft,
@@ -24,11 +25,12 @@ import {
     Sun,
     Moon,
     Github,
+    Bot,
 } from 'lucide-react';
 import { ExchangeType, EXCHANGE_DISPLAY_NAMES } from '@/lib/exchange_types';
 import { useTheme } from './ThemeProvider';
 
-type ViewMode = 'overview' | 'positions' | 'trades';
+type ViewMode = 'overview' | 'positions' | 'trades' | 'ai';
 
 export function Dashboard() {
     const { theme, toggleTheme } = useTheme();
@@ -355,6 +357,15 @@ export function Dashboard() {
                             >
                                 <LayoutList size={16} className="mr-2" /> Trades
                             </button>
+                            <button
+                                onClick={() => { setViewMode('ai'); }}
+                                className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${viewMode === 'ai'
+                                    ? 'bg-gradient-to-r from-purple-500/20 to-blue-500/20 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/20'
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                                    }`}
+                            >
+                                <Bot size={16} className="mr-2" /> AI Analysis
+                            </button>
                         </div>
 
                         {/* Symbol Selector */}
@@ -483,7 +494,7 @@ export function Dashboard() {
                 )}
 
                 {/* Positions/Trades Mode */}
-                {viewMode !== 'overview' && (
+                {(viewMode === 'positions' || viewMode === 'trades') && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* Chart Section */}
                         <section className="glass rounded-xl p-6">
@@ -570,6 +581,17 @@ export function Dashboard() {
                                 </>
                             )}
                         </section>
+                    </div>
+                )}
+
+                {/* AI Analysis Mode */}
+                {viewMode === 'ai' && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <AIAnalysis
+                            stats={stats}
+                            sessions={allSessions}
+                            exchange={selectedExchange}
+                        />
                     </div>
                 )}
             </div>
