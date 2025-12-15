@@ -32,6 +32,12 @@ binance_executions.csv
 binance_wallet_history.csv
 binance_account_summary.json
 
+# OKX 交易數據 (根目錄)
+okx_executions.csv
+okx_wallet_history.csv
+okx_positions_history.csv
+okx_account_summary.json
+
 # K 線數據 (data/ohlcv/)
 /data/ohlcv/*.csv
 

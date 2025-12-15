@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ExchangeType } from '@/lib/exchange_types';
 import {
     Wallet,
     TrendingUp,
@@ -13,6 +14,12 @@ import {
     Activity,
     Zap
 } from 'lucide-react';
+
+// Safe number helper - handles null/undefined values
+const safeNum = (value: number | null | undefined, defaultValue: number = 0): number => {
+    if (value === null || value === undefined || isNaN(value)) return defaultValue;
+    return value;
+};
 
 interface TradingStats {
     totalTrades: number;
@@ -59,7 +66,7 @@ interface AccountSummary {
 interface StatsOverviewProps {
     stats: TradingStats;
     account: AccountSummary | null;
-    exchange?: 'bitmex' | 'binance';
+    exchange?: ExchangeType;
 }
 
 function StatCard({
@@ -130,23 +137,23 @@ export function StatsOverview({ stats, account, exchange = 'bitmex' }: StatsOver
                                     <Wallet className="w-4 h-4" /> Account Balance
                                 </p>
                                 <div className="flex items-baseline gap-2">
-                                    <p className="text-4xl font-bold tracking-tight text-white">{account.wallet.marginBalance.toFixed(4)}</p>
+                                    <p className="text-4xl font-bold tracking-tight text-white">{safeNum(account.wallet.marginBalance).toFixed(4)}</p>
                                     <span className="text-xl font-medium text-white/60">{currencyUnit}</span>
                                 </div>
                                 <div className="flex items-center gap-4 mt-3">
                                     <p className="text-sm text-blue-200/60 font-medium">
-                                        Available: <span className="text-blue-100">{account.wallet.availableMargin.toFixed(4)} {currencyUnit}</span>
+                                        Available: <span className="text-blue-100">{safeNum(account.wallet.availableMargin).toFixed(4)} {currencyUnit}</span>
                                     </p>
                                 </div>
                             </div>
-                            <div className={`px-5 py-3 rounded-xl backdrop-blur-md border border-white/5 ${account.wallet.unrealisedPnl >= 0
+                            <div className={`px-5 py-3 rounded-xl backdrop-blur-md border border-white/5 ${safeNum(account.wallet.unrealisedPnl) >= 0
                                 ? 'bg-emerald-500/10 text-emerald-200'
                                 : 'bg-rose-500/10 text-rose-200'
                                 }`}>
                                 <p className="text-xs font-bold opacity-70 mb-1 uppercase tracking-wider">Unrealized PnL</p>
                                 <p className="text-xl font-bold flex items-center gap-2">
-                                    {account.wallet.unrealisedPnl >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-                                    {account.wallet.unrealisedPnl >= 0 ? '+' : ''}{account.wallet.unrealisedPnl.toFixed(6)} {currencyUnit}
+                                    {safeNum(account.wallet.unrealisedPnl) >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+                                    {safeNum(account.wallet.unrealisedPnl) >= 0 ? '+' : ''}{safeNum(account.wallet.unrealisedPnl).toFixed(6)} {currencyUnit}
                                 </p>
                             </div>
                         </div>
@@ -195,30 +202,30 @@ export function StatsOverview({ stats, account, exchange = 'bitmex' }: StatsOver
                     <StatCard
                         icon={DollarSign}
                         label="Total Realized PnL"
-                        value={`${stats.totalRealizedPnl >= 0 ? '+' : ''}${stats.totalRealizedPnl.toFixed(4)} ${currencyUnit}`}
-                        color={stats.totalRealizedPnl >= 0 ? 'green' : 'red'}
-                        trend={stats.totalRealizedPnl >= 0 ? 'up' : 'down'}
+                        value={`${safeNum(stats.totalRealizedPnl) >= 0 ? '+' : ''}${safeNum(stats.totalRealizedPnl).toFixed(4)} ${currencyUnit}`}
+                        color={safeNum(stats.totalRealizedPnl) >= 0 ? 'green' : 'red'}
+                        trend={safeNum(stats.totalRealizedPnl) >= 0 ? 'up' : 'down'}
                     />
                     <StatCard
                         icon={Zap}
                         label="Net Funding"
-                        value={`${stats.totalFunding >= 0 ? '+' : ''}${stats.totalFunding.toFixed(4)} ${currencyUnit}`}
-                        subValue={`Paid: ${stats.fundingPaid.toFixed(4)} | Rcvd: ${stats.fundingReceived.toFixed(4)}`}
-                        color={stats.totalFunding >= 0 ? 'green' : 'amber'}
+                        value={`${safeNum(stats.totalFunding) >= 0 ? '+' : ''}${safeNum(stats.totalFunding).toFixed(4)} ${currencyUnit}`}
+                        subValue={`Paid: ${safeNum(stats.fundingPaid).toFixed(4)} | Rcvd: ${safeNum(stats.fundingReceived).toFixed(4)}`}
+                        color={safeNum(stats.totalFunding) >= 0 ? 'green' : 'amber'}
                     />
                     <StatCard
                         icon={Target}
                         label="Win Rate"
-                        value={`${stats.winRate.toFixed(1)}%`}
-                        subValue={`${stats.winningTrades}W / ${stats.losingTrades}L`}
-                        color={stats.winRate >= 50 ? 'green' : 'red'}
+                        value={`${safeNum(stats.winRate).toFixed(1)}%`}
+                        subValue={`${safeNum(stats.winningTrades)}W / ${safeNum(stats.losingTrades)}L`}
+                        color={safeNum(stats.winRate) >= 50 ? 'green' : 'red'}
                     />
                     <StatCard
                         icon={BarChart3}
                         label="Profit Factor"
-                        value={stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2)}
-                        subValue={`Avg Win: ${stats.avgWin.toFixed(6)} | Avg Loss: ${stats.avgLoss.toFixed(6)}`}
-                        color={stats.profitFactor >= 1.5 ? 'green' : stats.profitFactor >= 1 ? 'amber' : 'red'}
+                        value={stats.profitFactor === Infinity ? '∞' : safeNum(stats.profitFactor).toFixed(2)}
+                        subValue={`Avg Win: ${safeNum(stats.avgWin).toFixed(6)} | Avg Loss: ${safeNum(stats.avgLoss).toFixed(6)}`}
+                        color={safeNum(stats.profitFactor) >= 1.5 ? 'green' : safeNum(stats.profitFactor) >= 1 ? 'amber' : 'red'}
                     />
                 </div>
             </div>

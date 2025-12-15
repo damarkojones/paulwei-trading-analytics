@@ -259,7 +259,8 @@ function parseRealizedPnlFromText(text: string): number {
 
 function parsePositionSideFromText(text: string): 'LONG' | 'SHORT' | 'BOTH' {
     if (!text) return 'BOTH';
-    const match = text.match(/positionSide:(\w+)/i);
+    // Handle both Binance 'positionSide:' and OKX 'posSide:' formats
+    const match = text.match(/(?:positionSide|posSide)[:\s]*(\w+)/i);
     if (match) {
         const side = match[1].toUpperCase();
         if (side === 'LONG' || side === 'SHORT') return side;
@@ -286,7 +287,7 @@ interface BinanceAggregatedOrder {
 }
 
 function calculateBinancePositionSessions(executions: Execution[]): PositionSession[] {
-    const tradeExecutions = executions.filter(e => 
+    const tradeExecutions = executions.filter(e =>
         e.execType === 'Trade' && e.side && e.lastQty > 0
     );
 
@@ -308,14 +309,14 @@ function calculateBinancePositionSessions(executions: Execution[]): PositionSess
     executionsByKey.forEach((keyExecutions, key) => {
         const [symbol, positionSideStr] = key.split(':');
         const positionSide = positionSideStr as 'LONG' | 'SHORT' | 'BOTH';
-        
+
         // Step 1: Aggregate executions by orderID
         const orderMap = new Map<string, BinanceAggregatedOrder>();
-        
+
         keyExecutions.forEach(e => {
             const orderID = e.orderID;
             const pnl = parseRealizedPnlFromText(e.text);
-            
+
             if (!orderMap.has(orderID)) {
                 orderMap.set(orderID, {
                     orderID,
@@ -331,38 +332,38 @@ function calculateBinancePositionSessions(executions: Execution[]): PositionSess
                     executions: [],
                 });
             }
-            
+
             const order = orderMap.get(orderID)!;
             order.totalQty += e.lastQty;
             order.totalCost += e.lastQty * e.lastPx;
             order.totalComm += e.execComm;
             order.realizedPnl += pnl;
             order.executions.push(e);
-            
+
             if (e.timestamp < order.timestamp) {
                 order.timestamp = e.timestamp;
             }
         });
-        
+
         orderMap.forEach(order => {
             order.avgPrice = order.totalQty > 0 ? order.totalCost / order.totalQty : 0;
         });
-        
+
         // Step 2: Sort orders by timestamp
         const orders = Array.from(orderMap.values())
             .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        
+
         // Step 3: Build position sessions
         // For HEDGE MODE:
         // - LONG position: Buy = open/add, Sell = close
         // - SHORT position: Sell = open/add, Buy = close
         const isShortPosition = positionSide === 'SHORT';
-        
+
         let runningPosition = 0;
         let sessionOrders: BinanceAggregatedOrder[] = [];
         let sessionStartTime: string | null = null;
         let lastOrderTime = 0;
-        
+
         // Helper to calculate position change based on positionSide
         const getPositionDelta = (order: BinanceAggregatedOrder): number => {
             if (isShortPosition) {
@@ -373,19 +374,19 @@ function calculateBinancePositionSessions(executions: Execution[]): PositionSess
                 return order.side === 'Buy' ? order.totalQty : -order.totalQty;
             }
         };
-        
+
         const closeSession = (endTime: string) => {
             if (sessionOrders.length === 0 || sessionStartTime === null) return;
-            
+
             let totalEntry = 0, totalExit = 0;
             let totalEntryCost = 0, totalExitCost = 0;
             let totalComm = 0, totalRealizedPnl = 0;
-            
+
             sessionOrders.forEach(order => {
-                const isOpening = isShortPosition 
+                const isOpening = isShortPosition
                     ? order.side === 'Sell'  // SHORT: Sell opens
                     : order.side === 'Buy';  // LONG: Buy opens
-                    
+
                 if (isOpening) {
                     totalEntry += order.totalQty;
                     totalEntryCost += order.totalCost;
@@ -396,24 +397,24 @@ function calculateBinancePositionSessions(executions: Execution[]): PositionSess
                 totalComm += order.totalComm;
                 totalRealizedPnl += order.realizedPnl;
             });
-            
+
             // Session side is determined by positionSide
             const side: 'long' | 'short' = isShortPosition ? 'short' : 'long';
-            
+
             const avgEntryPrice = totalEntry > 0 ? totalEntryCost / totalEntry : 0;
             const avgExitPrice = totalExit > 0 ? totalExitCost / totalExit : 0;
-            
+
             // For Binance, use realizedPnl directly from execution data
             const realizedPnl = totalRealizedPnl;
             const totalFees = Math.abs(totalComm) / 100000000;
-            
+
             // Calculate max position
             let tempPos = 0, maxPosition = 0;
             sessionOrders.forEach(order => {
                 tempPos += getPositionDelta(order);
                 maxPosition = Math.max(maxPosition, Math.abs(tempPos));
             });
-            
+
             // Build trades array
             const trades: Trade[] = [];
             sessionOrders.forEach(order => {
@@ -433,12 +434,12 @@ function calculateBinancePositionSessions(executions: Execution[]): PositionSess
                     });
                 });
             });
-            
+
             trades.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
-            
+
             const isClosed = isBinancePositionClosed(totalEntry - totalExit);
             const durationMs = new Date(endTime).getTime() - new Date(sessionStartTime!).getTime();
-            
+
             allSessions.push({
                 id: `${symbol}-${positionSide}-${globalSessionId++}`,
                 symbol,
@@ -460,39 +461,39 @@ function calculateBinancePositionSessions(executions: Execution[]): PositionSess
                 status: isClosed ? 'closed' : 'open',
             });
         };
-        
+
         const resetSession = () => {
             sessionOrders = [];
             sessionStartTime = null;
         };
-        
+
         // Step 4: Process each order
         for (const order of orders) {
             const orderTime = new Date(order.timestamp).getTime();
             const timeSinceLastOrder = lastOrderTime > 0 ? orderTime - lastOrderTime : 0;
             const positionBefore = runningPosition;
             const wasPositionClosed = isBinancePositionClosed(positionBefore);
-            
+
             // Time gap check - only close if position is small
             if (timeSinceLastOrder > BINANCE_SESSION_GAP_MS && sessionOrders.length > 0 && wasPositionClosed) {
                 closeSession(sessionOrders[sessionOrders.length - 1].timestamp);
                 resetSession();
                 runningPosition = 0;
             }
-            
+
             // Update running position using positionSide-aware logic
             runningPosition += getPositionDelta(order);
-            
+
             const isNowClosed = isBinancePositionClosed(runningPosition);
-            
+
             // Session start
             if (wasPositionClosed && !isNowClosed && sessionOrders.length === 0) {
                 sessionStartTime = order.timestamp;
             }
-            
+
             sessionOrders.push(order);
             lastOrderTime = orderTime;
-            
+
             // Session end - position returned to ~0
             if (!wasPositionClosed && isNowClosed) {
                 closeSession(order.timestamp);
@@ -500,7 +501,7 @@ function calculateBinancePositionSessions(executions: Execution[]): PositionSess
                 runningPosition = 0;
             }
         }
-        
+
         // Handle remaining open position
         if (sessionOrders.length > 0) {
             closeSession(sessionOrders[sessionOrders.length - 1].timestamp);
@@ -526,13 +527,15 @@ export function calculatePositionSessionsFromExecutions(
     exchangeId?: string
 ): PositionSession[] {
     if (executions.length === 0) return [];
-    
+
     // Auto-detect exchange from first execution's symbol
     const firstSymbol = executions[0]?.symbol || '';
     const isBinance = exchangeId === 'binance' || isBinanceSymbol(firstSymbol);
-    
-    if (isBinance) {
-        console.log('[Position Calculator] Using Binance calculator');
+    const isOkx = exchangeId === 'okx' || firstSymbol.includes('-SWAP') || firstSymbol.includes('-USDT-');
+
+    // OKX and Binance both use hedge mode with positionSide (long/short)
+    if (isBinance || isOkx) {
+        console.log(`[Position Calculator] Using Binance/OKX calculator for ${exchangeId || 'auto-detected'}`);
         return calculateBinancePositionSessions(executions);
     } else {
         console.log('[Position Calculator] Using BitMEX calculator');

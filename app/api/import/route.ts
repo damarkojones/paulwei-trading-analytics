@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ExchangeConfig, ExchangeType, ImportResult } from '@/lib/exchange_types';
 import { exportBitmexData, testBitmexConnection } from '@/lib/bitmex_exporter';
 import { exportBinanceData, testBinanceConnection } from '@/lib/binance_exporter';
+import { exportOkxData, testOkxConnection } from '@/lib/okx_exporter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,10 +13,19 @@ export async function GET(request: NextRequest) {
     const exchange = searchParams.get('exchange') as ExchangeType;
     const apiKey = searchParams.get('apiKey');
     const apiSecret = searchParams.get('apiSecret');
+    const passphrase = searchParams.get('passphrase');
 
     if (!exchange || !apiKey || !apiSecret) {
         return NextResponse.json(
             { success: false, message: 'Missing required parameters: exchange, apiKey, apiSecret' },
+            { status: 400 }
+        );
+    }
+
+    // OKX requires passphrase
+    if (exchange === 'okx' && !passphrase) {
+        return NextResponse.json(
+            { success: false, message: 'OKX requires a passphrase' },
             { status: 400 }
         );
     }
@@ -29,6 +39,9 @@ export async function GET(request: NextRequest) {
                 break;
             case 'binance':
                 result = await testBinanceConnection(apiKey, apiSecret);
+                break;
+            case 'okx':
+                result = await testOkxConnection(apiKey, apiSecret, passphrase!);
                 break;
             default:
                 return NextResponse.json(
@@ -50,7 +63,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { exchange, apiKey, apiSecret, startDate, endDate, forceRefetch } = body;
+        const { exchange, apiKey, apiSecret, passphrase, startDate, endDate, forceRefetch } = body;
 
         if (!exchange || !apiKey || !apiSecret || !startDate || !endDate) {
             return NextResponse.json(
@@ -59,15 +72,24 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // OKX requires passphrase
+        if (exchange === 'okx' && !passphrase) {
+            return NextResponse.json(
+                { success: false, message: 'OKX requires a passphrase' },
+                { status: 400 }
+            );
+        }
+
         const config: ExchangeConfig = {
             exchange,
             apiKey,
             apiSecret,
+            passphrase,
             startDate,
             endDate,
-            forceRefetch: forceRefetch === true, // Explicitly convert to boolean
+            forceRefetch: forceRefetch === true,
         };
-        
+
         console.log(`[Import] Exchange: ${exchange}, Force Refetch: ${config.forceRefetch}`);
 
         let result: ImportResult;
@@ -78,6 +100,9 @@ export async function POST(request: NextRequest) {
                 break;
             case 'binance':
                 result = await exportBinanceData(config);
+                break;
+            case 'okx':
+                result = await exportOkxData(config);
                 break;
             default:
                 return NextResponse.json(

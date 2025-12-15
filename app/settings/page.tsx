@@ -2,13 +2,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-    ArrowLeft, 
-    Key, 
-    Database, 
-    CheckCircle2, 
-    XCircle, 
-    Loader2, 
+import {
+    ArrowLeft,
+    Key,
+    Database,
+    CheckCircle2,
+    XCircle,
+    Loader2,
     Calendar,
     Shield,
     Download,
@@ -41,6 +41,8 @@ export default function SettingsPage() {
     const [exchange, setExchange] = useState<ExchangeType>('bitmex');
     const [apiKey, setApiKey] = useState('');
     const [apiSecret, setApiSecret] = useState('');
+    const [passphrase, setPassphrase] = useState('');
+    const [okxInstType, setOkxInstType] = useState<'SWAP' | 'FUTURES' | 'MARGIN' | 'ALL'>('SWAP');
     const [startDate, setStartDate] = useState('2020-01-01');
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [importState, setImportState] = useState<ImportState>({ status: 'idle', message: '' });
@@ -82,6 +84,11 @@ export default function SettingsPage() {
             return;
         }
 
+        if (exchange === 'okx' && !passphrase) {
+            setImportState({ status: 'error', message: 'OKX requires a passphrase' });
+            return;
+        }
+
         setImportState({ status: 'testing', message: 'Testing connection...' });
         setConnectionTested(false);
         clearLogs();
@@ -92,8 +99,9 @@ export default function SettingsPage() {
                 exchange,
                 apiKey,
                 apiSecret,
+                ...(exchange === 'okx' && { passphrase }),
             });
-            
+
             const res = await fetch(`/api/import?${params}`);
             const data = await res.json();
 
@@ -130,6 +138,8 @@ export default function SettingsPage() {
                     exchange,
                     apiKey,
                     apiSecret,
+                    passphrase: exchange === 'okx' ? passphrase : undefined,
+                    okxInstType: exchange === 'okx' ? okxInstType : undefined,
                     startDate,
                     endDate,
                     forceRefetch,
@@ -152,11 +162,11 @@ export default function SettingsPage() {
 
             while (true) {
                 const { done, value } = await reader.read();
-                
+
                 if (done) break;
 
                 buffer += decoder.decode(value, { stream: true });
-                
+
                 // Process complete SSE messages
                 const lines = buffer.split('\n\n');
                 buffer = lines.pop() || ''; // Keep incomplete message in buffer
@@ -165,7 +175,7 @@ export default function SettingsPage() {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6));
-                            
+
                             // Check if it's the final result
                             if (data.message && data.message.startsWith('{')) {
                                 try {
@@ -174,15 +184,15 @@ export default function SettingsPage() {
                                         const result = finalData.result;
                                         setProgress(100);
                                         if (result.success) {
-                                            setImportState({ 
-                                                status: 'success', 
+                                            setImportState({
+                                                status: 'success',
                                                 message: result.message,
                                                 stats: result.stats,
                                             });
                                         } else {
-                                            setImportState({ 
-                                                status: 'error', 
-                                                message: result.message || result.error 
+                                            setImportState({
+                                                status: 'error',
+                                                message: result.message || result.error
                                             });
                                         }
                                         continue;
@@ -191,7 +201,7 @@ export default function SettingsPage() {
                                     // Not JSON, treat as regular message
                                 }
                             }
-                            
+
                             // Handle different message types
                             if (data.message) {
                                 if (data.type === 'progress') {
@@ -202,7 +212,7 @@ export default function SettingsPage() {
                                     addLog(data.message, data.type || 'info');
                                 }
                             }
-                            
+
                             // Update progress bar
                             if (data.progress !== undefined) {
                                 setProgress(data.progress);
@@ -261,7 +271,7 @@ export default function SettingsPage() {
             <div className="max-w-4xl mx-auto space-y-6">
                 {/* Header */}
                 <header className="flex items-center gap-4 pb-6 border-b border-zinc-800">
-                    <Link 
+                    <Link
                         href="/"
                         className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors"
                     >
@@ -297,9 +307,9 @@ export default function SettingsPage() {
                                 <Database className="w-5 h-5 text-blue-400" />
                                 <h2 className="text-lg font-semibold text-white">Exchange</h2>
                             </div>
-                            
-                            <div className="grid grid-cols-2 gap-3">
-                                {(['bitmex', 'binance'] as ExchangeType[]).map((ex) => (
+
+                            <div className="grid grid-cols-3 gap-3">
+                                {(['bitmex', 'binance', 'okx'] as ExchangeType[]).map((ex) => (
                                     <button
                                         key={ex}
                                         onClick={() => {
@@ -307,11 +317,10 @@ export default function SettingsPage() {
                                             setConnectionTested(false);
                                             setImportState({ status: 'idle', message: '' });
                                         }}
-                                        className={`p-4 rounded-lg border-2 transition-all ${
-                                            exchange === ex
-                                                ? 'border-blue-500 bg-blue-500/10'
-                                                : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800/50'
-                                        }`}
+                                        className={`p-4 rounded-lg border-2 transition-all ${exchange === ex
+                                            ? 'border-blue-500 bg-blue-500/10'
+                                            : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800/50'
+                                            }`}
                                     >
                                         <div className="flex items-center justify-between">
                                             <span className="font-semibold text-white">{EXCHANGE_DISPLAY_NAMES[ex]}</span>
@@ -320,7 +329,9 @@ export default function SettingsPage() {
                                             )}
                                         </div>
                                         <p className="text-xs text-zinc-400 mt-1 text-left">
-                                            {ex === 'bitmex' ? 'BTC/ETH Perpetuals' : 'USDT-M Futures'}
+                                            {ex === 'bitmex' ? 'BTC/ETH Perpetuals' :
+                                                ex === 'binance' ? 'USDT-M Futures' :
+                                                    'Unified Trading'}
                                         </p>
                                     </button>
                                 ))}
@@ -335,9 +346,11 @@ export default function SettingsPage() {
                                     <h2 className="text-lg font-semibold text-white">API Credentials</h2>
                                 </div>
                                 <a
-                                    href={exchange === 'bitmex' 
+                                    href={exchange === 'bitmex'
                                         ? 'https://www.bitmex.com/app/apiKeys'
-                                        : 'https://www.binance.com/en/my/settings/api-management'
+                                        : exchange === 'binance'
+                                            ? 'https://www.binance.com/en/my/settings/api-management'
+                                            : 'https://www.okx.com/account/my-api'
                                     }
                                     target="_blank"
                                     rel="noopener noreferrer"
@@ -384,6 +397,58 @@ export default function SettingsPage() {
                                                  outline-none transition-all font-mono text-sm"
                                     />
                                 </div>
+
+                                {/* Passphrase - OKX only */}
+                                {exchange === 'okx' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-zinc-400 mb-2">
+                                            Passphrase <span className="text-amber-400">*</span>
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={passphrase}
+                                            onChange={(e) => {
+                                                setPassphrase(e.target.value);
+                                                setConnectionTested(false);
+                                            }}
+                                            placeholder="Enter your API Passphrase"
+                                            className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 
+                                                     text-white placeholder-zinc-500
+                                                     focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 
+                                                     outline-none transition-all font-mono text-sm"
+                                        />
+                                        <p className="text-xs text-zinc-500 mt-1">
+                                            The passphrase you set when creating the API key
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* OKX Instrument Type Selector */}
+                                {exchange === 'okx' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-zinc-400 mb-2">
+                                            Instrument Type
+                                        </label>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {(['SWAP', 'FUTURES', 'MARGIN', 'ALL'] as const).map((type) => (
+                                                <button
+                                                    key={type}
+                                                    type="button"
+                                                    onClick={() => setOkxInstType(type)}
+                                                    className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${okxInstType === type
+                                                            ? 'bg-blue-500/20 border-blue-500 text-blue-400 border'
+                                                            : 'bg-zinc-800 border-zinc-700 text-zinc-400 border hover:border-zinc-600'
+                                                        }`}
+                                                >
+                                                    {type}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-zinc-500 mt-2">
+                                            SWAP = 永續合約 | FUTURES = 交割合約 | MARGIN = 保證金交易
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             <button
@@ -496,15 +561,15 @@ export default function SettingsPage() {
                                     <span>{progress}%</span>
                                 </div>
                                 <div className="h-3 bg-zinc-800 rounded-full overflow-hidden">
-                                    <div 
+                                    <div
                                         className="h-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-300 ease-out"
                                         style={{ width: `${progress}%` }}
                                     />
                                 </div>
                                 <div className="text-xs text-zinc-500 text-center">
-                                    {progress < 50 ? 'Fetching trades...' : 
-                                     progress < 100 ? 'Fetching income history...' : 
-                                     'Saving files...'}
+                                    {progress < 50 ? 'Fetching trades...' :
+                                        progress < 100 ? 'Fetching income history...' :
+                                            'Saving files...'}
                                 </div>
                             </div>
                         )}
@@ -622,7 +687,7 @@ export default function SettingsPage() {
                                 <h2 className="text-lg font-semibold text-white">Data Files</h2>
                             </div>
                             <p className="text-sm text-zinc-400 mb-3">
-                                {exchange === 'binance' ? 'Binance' : 'BitMEX'} data files in project:
+                                {EXCHANGE_DISPLAY_NAMES[exchange]} data files in project:
                             </p>
                             <div className="space-y-2 text-sm font-mono">
                                 {['executions', 'orders', 'wallet_history', 'account_summary'].map(file => (

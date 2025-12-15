@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { ExchangeConfig } from '@/lib/exchange_types';
 import { exportBinanceDataWithProgress } from '@/lib/binance_exporter';
 import { exportBitmexDataWithProgress } from '@/lib/bitmex_exporter';
+import { exportOkxDataWithProgress } from '@/lib/okx_exporter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
 // Streaming import with real-time progress
 export async function POST(request: NextRequest) {
     const body = await request.json();
-    const { exchange, apiKey, apiSecret, startDate, endDate, forceRefetch } = body;
+    const { exchange, apiKey, apiSecret, passphrase, okxInstType, startDate, endDate, forceRefetch } = body;
 
     if (!exchange || !apiKey || !apiSecret || !startDate || !endDate) {
         return new Response(
@@ -18,10 +19,20 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // OKX requires passphrase
+    if (exchange === 'okx' && !passphrase) {
+        return new Response(
+            JSON.stringify({ error: 'OKX requires a passphrase' }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+    }
+
     const config: ExchangeConfig = {
         exchange,
         apiKey,
         apiSecret,
+        passphrase,
+        okxInstType,
         startDate,
         endDate,
         forceRefetch: forceRefetch === true,
@@ -42,11 +53,13 @@ export async function POST(request: NextRequest) {
     (async () => {
         try {
             let result;
-            
+
             if (exchange === 'binance') {
                 result = await exportBinanceDataWithProgress(config, sendLog);
             } else if (exchange === 'bitmex') {
                 result = await exportBitmexDataWithProgress(config, sendLog);
+            } else if (exchange === 'okx') {
+                result = await exportOkxDataWithProgress(config, sendLog);
             } else {
                 await sendLog(`Unsupported exchange: ${exchange}`, 'error');
                 await writer.close();
@@ -70,4 +83,3 @@ export async function POST(request: NextRequest) {
         },
     });
 }
-

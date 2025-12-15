@@ -57,13 +57,17 @@ export function Dashboard() {
 
         const trades: { datetime: string; side: 'buy' | 'sell'; price: number; amount: number; sessionId: string; label: string }[] = [];
 
-        // Normalize symbol for comparison (handle XBT/BTC aliasing)
+        // Normalize symbol for comparison (handle XBT/BTC aliasing and OKX format)
         const normalizeSymbol = (sym: string): string => {
             return sym.toUpperCase()
                 .replace('XBT', 'BTC')  // BitMEX uses XBT for BTC
+                .replace('-USDT-SWAP', '')  // OKX SWAP format
+                .replace('-USD-SWAP', '')   // OKX USD SWAP
+                .replace('-SWAP', '')       // Any other SWAP
                 .replace('USD', '')
                 .replace('USDT', '')
                 .replace('/', '')
+                .replace('-', '')
                 .replace(':BTC', '');
         };
 
@@ -138,11 +142,19 @@ export function Dashboard() {
     // Symbol options based on exchange
     const symbolOptions = selectedExchange === 'bitmex'
         ? ['BTCUSD', 'ETHUSD']
-        : ['BTCUSDT', 'ETHUSDT'];
+        : selectedExchange === 'okx'
+            ? ['BTC-USDT-SWAP', 'ETH-USDT-SWAP']
+            : ['BTCUSDT', 'ETHUSDT'];
 
     // Reset symbol when exchange changes
     useEffect(() => {
-        setSelectedSymbol(selectedExchange === 'bitmex' ? 'BTCUSD' : 'BTCUSDT');
+        if (selectedExchange === 'bitmex') {
+            setSelectedSymbol('BTCUSD');
+        } else if (selectedExchange === 'okx') {
+            setSelectedSymbol('BTC-USDT-SWAP');
+        } else {
+            setSelectedSymbol('BTCUSDT');
+        }
     }, [selectedExchange]);
 
     // Load Stats and Account Data
@@ -304,6 +316,7 @@ export function Dashboard() {
                             >
                                 <option value="bitmex">BitMEX</option>
                                 <option value="binance">Binance</option>
+                                <option value="okx">OKX</option>
                             </select>
                             <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-muted-foreground">
                                 <Database className="w-4 h-4" />
@@ -398,7 +411,7 @@ export function Dashboard() {
                                 <path d="M2 12L12 17L22 12" stroke="#f7941d" strokeWidth="2" />
                             </svg>
                         </div>
-                    ) : (
+                    ) : selectedExchange === 'binance' ? (
                         <div className="w-10 h-10 rounded-xl bg-[#f0b90b]/10 flex items-center justify-center">
                             <svg viewBox="0 0 24 24" className="w-6 h-6" fill="#f0b90b">
                                 <path d="M12 2L6 8.5L8.5 11L12 7.5L15.5 11L18 8.5L12 2Z" />
@@ -406,6 +419,16 @@ export function Dashboard() {
                                 <path d="M21 12L18.5 9.5L16 12L18.5 14.5L21 12Z" />
                                 <path d="M12 16.5L8.5 13L6 15.5L12 22L18 15.5L15.5 13L12 16.5Z" />
                                 <path d="M12 9.5L9.5 12L12 14.5L14.5 12L12 9.5Z" />
+                            </svg>
+                        </div>
+                    ) : (
+                        /* OKX */
+                        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
+                                <circle cx="8" cy="8" r="3" fill="white" />
+                                <circle cx="16" cy="8" r="3" fill="white" />
+                                <circle cx="8" cy="16" r="3" fill="white" />
+                                <circle cx="16" cy="16" r="3" fill="white" />
                             </svg>
                         </div>
                     )}

@@ -1,11 +1,13 @@
 // ============ Exchange Types ============
 
-export type ExchangeType = 'bitmex' | 'binance';
+export type ExchangeType = 'bitmex' | 'binance' | 'okx';
 
 export interface ExchangeConfig {
     exchange: ExchangeType;
     apiKey: string;
     apiSecret: string;
+    passphrase?: string;  // Required for OKX
+    okxInstType?: 'SWAP' | 'FUTURES' | 'MARGIN' | 'ALL';  // OKX instrument type
     startDate: string;
     endDate: string;
     forceRefetch?: boolean;
@@ -27,9 +29,19 @@ const BINANCE_SYMBOL_MAP: Record<string, string> = {
     'ETHUSD_PERP': 'ETHUSD',
 };
 
+const OKX_SYMBOL_MAP: Record<string, string> = {
+    'BTC-USDT-SWAP': 'BTCUSDT',
+    'ETH-USDT-SWAP': 'ETHUSDT',
+    'BTC-USD-SWAP': 'BTCUSD',
+    'ETH-USD-SWAP': 'ETHUSD',
+};
+
 export function formatSymbol(symbol: string, exchange: ExchangeType = 'bitmex'): string {
     if (exchange === 'bitmex') {
         return BITMEX_SYMBOL_MAP[symbol] || symbol.replace('XBT', 'BTC');
+    }
+    if (exchange === 'okx') {
+        return OKX_SYMBOL_MAP[symbol] || symbol.replace('-SWAP', '').replace('-', '');
     }
     return BINANCE_SYMBOL_MAP[symbol] || symbol;
 }
@@ -37,6 +49,13 @@ export function formatSymbol(symbol: string, exchange: ExchangeType = 'bitmex'):
 export function toInternalSymbol(displaySymbol: string, exchange: ExchangeType = 'bitmex'): string {
     if (exchange === 'bitmex') {
         return displaySymbol.replace('BTC', 'XBT');
+    }
+    if (exchange === 'okx') {
+        // OKX uses format like BTC-USDT-SWAP
+        if (displaySymbol === 'BTCUSDT') return 'BTC-USDT-SWAP';
+        if (displaySymbol === 'ETHUSDT') return 'ETH-USDT-SWAP';
+        if (displaySymbol === 'BTCUSD') return 'BTC-USD-SWAP';
+        if (displaySymbol === 'ETHUSD') return 'ETH-USD-SWAP';
     }
     return displaySymbol;
 }
@@ -171,10 +190,12 @@ export interface ImportResult {
 export const EXCHANGE_SYMBOLS: Record<ExchangeType, string[]> = {
     bitmex: ['BTCUSD', 'ETHUSD'],
     binance: ['BTCUSDT', 'ETHUSDT', 'BTCUSD_PERP', 'ETHUSD_PERP'],
+    okx: ['BTC-USDT-SWAP', 'ETH-USDT-SWAP', 'BTC-USD-SWAP', 'ETH-USD-SWAP'],
 };
 
 export const EXCHANGE_DISPLAY_NAMES: Record<ExchangeType, string> = {
     bitmex: 'BitMEX',
     binance: 'Binance Futures',
+    okx: 'OKX',
 };
 

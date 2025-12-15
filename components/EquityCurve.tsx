@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, Time } from 'lightweight-charts';
+import { ExchangeType } from '@/lib/exchange_types';
 
 interface EquityData {
     time: number;
@@ -10,7 +11,7 @@ interface EquityData {
 
 interface EquityCurveProps {
     data: EquityData[];
-    exchange?: 'bitmex' | 'binance';
+    exchange?: ExchangeType;
 }
 
 export function EquityCurve({ data, exchange = 'bitmex' }: EquityCurveProps) {

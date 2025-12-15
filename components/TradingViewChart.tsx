@@ -24,13 +24,22 @@ type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | '1w';
 // Map to Binance API symbol format
 function toBinanceSymbol(symbol: string): string {
     const symbolMap: Record<string, string> = {
+        // BitMEX formats
         'XBTUSD': 'BTCUSDT',
         'ETHUSD': 'ETHUSDT',
         'BTC/USD': 'BTCUSDT',
         'ETH/USD': 'ETHUSDT',
         'BTCUSD': 'BTCUSDT',
+        // OKX formats
+        'BTC-USDT-SWAP': 'BTCUSDT',
+        'ETH-USDT-SWAP': 'ETHUSDT',
+        'BTC-USD-SWAP': 'BTCUSDT',
+        'ETH-USD-SWAP': 'ETHUSDT',
+        // OKX FUTURES formats (may have expiry date, fallback to perpetual)
+        'BTC-USDT': 'BTCUSDT',
+        'ETH-USDT': 'ETHUSDT',
     };
-    return symbolMap[symbol] || symbol.toUpperCase();
+    return symbolMap[symbol] || symbol.replace(/-/g, '').toUpperCase();
 }
 
 // Map timeframe to Binance interval

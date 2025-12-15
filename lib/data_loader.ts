@@ -2,18 +2,17 @@
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
-import { 
-    Trade, 
-    Execution, 
-    Order, 
-    WalletTransaction, 
-    AccountSummary, 
+import {
+    Trade,
+    Execution,
+    Order,
+    WalletTransaction,
+    AccountSummary,
     TradingStats,
     PositionSession,
-    formatSymbol,
-    toInternalSymbol
+    formatSymbol
 } from './types';
-import { ExchangeType } from './exchange_types';
+import { ExchangeType, toInternalSymbol } from './exchange_types';
 
 // Re-export types and utilities for convenience
 export * from './types';
@@ -21,7 +20,9 @@ export * from './types';
 // ============ Exchange File Prefixes ============
 
 function getFilePrefix(exchange: ExchangeType): string {
-    return exchange === 'binance' ? 'binance_' : 'bitmex_';
+    if (exchange === 'binance') return 'binance_';
+    if (exchange === 'okx') return 'okx_';
+    return 'bitmex_';
 }
 
 // ============ Cache (per exchange) ============
@@ -50,12 +51,20 @@ const cacheStore: Record<ExchangeType, {
         accountSummary: null,
         sessions: null,
     },
+    okx: {
+        executions: null,
+        trades: null,
+        orders: null,
+        wallet: null,
+        accountSummary: null,
+        sessions: null,
+    },
 };
 
 // ============ Clear Cache ============
 
 export function clearCache(exchange?: ExchangeType) {
-    const exchanges: ExchangeType[] = exchange ? [exchange] : ['bitmex', 'binance'];
+    const exchanges: ExchangeType[] = exchange ? [exchange] : ['bitmex', 'binance', 'okx'];
     for (const ex of exchanges) {
         cacheStore[ex] = {
             executions: null,
@@ -116,12 +125,12 @@ export function loadTradesFromCSV(exchange: ExchangeType = 'bitmex'): Trade[] {
     if (cacheStore[exchange].trades) return cacheStore[exchange].trades!;
 
     const executions = loadExecutionsFromCSV(exchange);
-    
+
     // Filter only actual trades
-    const tradeExecutions = executions.filter(e => 
+    const tradeExecutions = executions.filter(e =>
         e.execType === 'Trade' && e.side && e.lastQty > 0 && e.orderID
     );
-    
+
     // Group by OrderID
     const orderGroups = new Map<string, Execution[]>();
     tradeExecutions.forEach(e => {
@@ -131,24 +140,24 @@ export function loadTradesFromCSV(exchange: ExchangeType = 'bitmex'): Trade[] {
         }
         orderGroups.get(key)!.push(e);
     });
-    
+
     // Aggregate each order's executions into a single trade
     cacheStore[exchange].trades = Array.from(orderGroups.entries()).map(([orderID, execs]) => {
         // Sort by timestamp to get the first execution time
         execs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        
+
         const firstExec = execs[0];
         const totalQty = execs.reduce((sum, e) => sum + e.lastQty, 0);
         const totalCost = execs.reduce((sum, e) => sum + Math.abs(e.execCost), 0);
         const totalFee = execs.reduce((sum, e) => sum + e.execComm, 0);
-        
+
         // Weighted average price
         const weightedPriceSum = execs.reduce((sum, e) => sum + (e.lastPx * e.lastQty), 0);
         const avgPrice = totalQty > 0 ? weightedPriceSum / totalQty : firstExec.lastPx;
-        
+
         // Determine fee currency based on exchange
-        const feeCurrency = exchange === 'binance' ? 'USDT' : 'XBT';
-        
+        const feeCurrency = (exchange === 'binance' || exchange === 'okx') ? 'USDT' : 'XBT';
+
         return {
             id: orderID, // Use orderID as the trade ID
             datetime: firstExec.timestamp,
@@ -167,7 +176,7 @@ export function loadTradesFromCSV(exchange: ExchangeType = 'bitmex'): Trade[] {
             executionCount: execs.length, // Track how many fills this order had
         };
     });
-    
+
     // Sort by datetime
     cacheStore[exchange].trades!.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
 
@@ -250,7 +259,7 @@ export function loadAccountSummary(exchange: ExchangeType = 'bitmex'): AccountSu
 
     const fileContent = fs.readFileSync(jsonPath, 'utf-8');
     const data = JSON.parse(fileContent);
-    
+
     cacheStore[exchange].accountSummary = {
         ...data,
         positions: data.positions.map((p: any) => ({
@@ -258,7 +267,7 @@ export function loadAccountSummary(exchange: ExchangeType = 'bitmex'): AccountSu
             displaySymbol: formatSymbol(p.symbol),
         })),
     };
-    
+
     return cacheStore[exchange].accountSummary;
 }
 
@@ -268,13 +277,13 @@ import { calculatePositionSessionsFromExecutions } from './position_calculator';
 
 export function getPositionSessions(exchange: ExchangeType = 'bitmex'): PositionSession[] {
     if (cacheStore[exchange].sessions) return cacheStore[exchange].sessions!;
-    
+
     // Use executions directly for more accurate position tracking
     const executions = loadExecutionsFromCSV(exchange);
     cacheStore[exchange].sessions = calculatePositionSessionsFromExecutions(executions, exchange);
-    
+
     console.log(`[${exchange}] Calculated ${cacheStore[exchange].sessions!.length} position sessions from ${executions.length} executions`);
-    
+
     return cacheStore[exchange].sessions!;
 }
 
@@ -284,44 +293,44 @@ export function calculateTradingStats(exchange: ExchangeType = 'bitmex'): Tradin
     const trades = loadTradesFromCSV(exchange);
     const orders = loadOrdersFromCSV(exchange);
     const wallet = loadWalletHistoryFromCSV(exchange);
-    
+
     const filledOrders = orders.filter(o => o.ordStatus === 'Filled').length;
     const canceledOrders = orders.filter(o => o.ordStatus === 'Canceled').length;
     const rejectedOrders = orders.filter(o => o.ordStatus === 'Rejected').length;
-    
+
     const limitOrders = orders.filter(o => o.ordType === 'Limit').length;
     const marketOrders = orders.filter(o => o.ordType === 'Market').length;
     const stopOrders = orders.filter(o => o.ordType === 'Stop' || o.ordType === 'StopLimit').length;
-    
+
     const SAT_TO_BTC = 100000000;
-    
+
     // For Binance, the amounts are already in USDT * SAT_TO_BTC
-    const realizedPnlTxs = wallet.filter(w => 
-        (w.transactType === 'RealisedPNL' || w.transactType === 'Funding') && 
+    const realizedPnlTxs = wallet.filter(w =>
+        (w.transactType === 'RealisedPNL' || w.transactType === 'Funding') &&
         w.transactStatus === 'Completed'
     );
     const fundingTxs = wallet.filter(w => w.transactType === 'Funding' && w.transactStatus === 'Completed');
-    
+
     const totalRealizedPnl = realizedPnlTxs
         .filter(w => w.transactType === 'RealisedPNL')
         .reduce((sum, w) => sum + w.amount, 0) / SAT_TO_BTC;
     const totalFees = realizedPnlTxs.reduce((sum, w) => sum + Math.abs(w.fee), 0) / SAT_TO_BTC;
-    
+
     const totalFunding = fundingTxs.reduce((sum, w) => sum + w.amount, 0) / SAT_TO_BTC;
     const fundingPaid = fundingTxs.filter(w => w.amount < 0).reduce((sum, w) => sum + Math.abs(w.amount), 0) / SAT_TO_BTC;
     const fundingReceived = fundingTxs.filter(w => w.amount > 0).reduce((sum, w) => sum + w.amount, 0) / SAT_TO_BTC;
-    
+
     const winningTxs = realizedPnlTxs.filter(w => w.amount > 0 && w.transactType === 'RealisedPNL');
     const losingTxs = realizedPnlTxs.filter(w => w.amount < 0 && w.transactType === 'RealisedPNL');
-    
+
     const totalWins = winningTxs.reduce((sum, w) => sum + w.amount, 0) / SAT_TO_BTC;
     const totalLosses = Math.abs(losingTxs.reduce((sum, w) => sum + w.amount, 0)) / SAT_TO_BTC;
-    
+
     const tradeDates = new Set(trades.map(t => t.datetime.split('T')[0]));
     const tradingDays = tradeDates.size;
-    
+
     const monthlyData = new Map<string, { pnl: number; funding: number; trades: number }>();
-    
+
     realizedPnlTxs.filter(w => w.transactType === 'RealisedPNL').forEach(w => {
         const month = w.timestamp.substring(0, 7);
         if (!monthlyData.has(month)) {
@@ -329,7 +338,7 @@ export function calculateTradingStats(exchange: ExchangeType = 'bitmex'): Tradin
         }
         monthlyData.get(month)!.pnl += w.amount / SAT_TO_BTC;
     });
-    
+
     fundingTxs.forEach(w => {
         const month = w.timestamp.substring(0, 7);
         if (!monthlyData.has(month)) {
@@ -337,14 +346,14 @@ export function calculateTradingStats(exchange: ExchangeType = 'bitmex'): Tradin
         }
         monthlyData.get(month)!.funding += w.amount / SAT_TO_BTC;
     });
-    
+
     trades.forEach(t => {
         const month = t.datetime.substring(0, 7);
         if (monthlyData.has(month)) {
             monthlyData.get(month)!.trades += 1;
         }
     });
-    
+
     const monthlyPnl = Array.from(monthlyData.entries())
         .map(([month, data]) => ({ month, ...data }))
         .sort((a, b) => a.month.localeCompare(b.month));
@@ -367,8 +376,8 @@ export function calculateTradingStats(exchange: ExchangeType = 'bitmex'): Tradin
         netPnl: totalRealizedPnl + totalFunding - totalFees,
         winningTrades: winningTxs.length,
         losingTrades: losingTxs.length,
-        winRate: (winningTxs.length + losingTxs.length) > 0 
-            ? (winningTxs.length / (winningTxs.length + losingTxs.length)) * 100 
+        winRate: (winningTxs.length + losingTxs.length) > 0
+            ? (winningTxs.length / (winningTxs.length + losingTxs.length)) * 100
             : 0,
         avgWin: winningTxs.length > 0 ? totalWins / winningTxs.length : 0,
         avgLoss: losingTxs.length > 0 ? totalLosses / losingTxs.length : 0,
@@ -383,10 +392,10 @@ export function calculateTradingStats(exchange: ExchangeType = 'bitmex'): Tradin
 
 export function getPaginatedTrades(page: number, limit: number, symbol?: string, exchange: ExchangeType = 'bitmex'): { trades: Trade[], total: number } {
     const allTrades = loadTradesFromCSV(exchange);
-    
+
     let filtered = allTrades;
     if (symbol) {
-        const internalSymbol = toInternalSymbol(symbol);
+        const internalSymbol = toInternalSymbol(symbol, exchange);
         filtered = allTrades.filter(t => t.symbol === symbol || t.symbol === internalSymbol || t.displaySymbol === symbol);
     }
 
@@ -403,11 +412,11 @@ export function getPaginatedTrades(page: number, limit: number, symbol?: string,
 
 export function getOHLCData(symbol: string = 'BTCUSD', timeframe: '1h' | '4h' | '1d' | '1w' = '1d', exchange: ExchangeType = 'bitmex') {
     const allTrades = loadTradesFromCSV(exchange);
-    
-    const internalSymbol = toInternalSymbol(symbol);
-    const filtered = allTrades.filter(t => 
-        t.symbol === symbol || 
-        t.symbol === internalSymbol || 
+
+    const internalSymbol = toInternalSymbol(symbol, exchange);
+    const filtered = allTrades.filter(t =>
+        t.symbol === symbol ||
+        t.symbol === internalSymbol ||
         t.displaySymbol === symbol
     );
 
@@ -496,7 +505,7 @@ export function getOHLCData(symbol: string = 'BTCUSD', timeframe: '1h' | '4h' | 
 
 export function getEquityCurve(exchange: ExchangeType = 'bitmex'): { time: number; balance: number }[] {
     const wallet = loadWalletHistoryFromCSV(exchange);
-    
+
     const balanceHistory = wallet
         .filter(w => w.transactStatus === 'Completed' && w.walletBalance > 0)
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -504,13 +513,13 @@ export function getEquityCurve(exchange: ExchangeType = 'bitmex'): { time: numbe
             time: Math.floor(new Date(w.timestamp).getTime() / 1000),
             balance: w.walletBalance / 100000000
         }));
-    
+
     const dailyBalance = new Map<number, number>();
     balanceHistory.forEach(b => {
         const dayTime = Math.floor(b.time / 86400) * 86400;
         dailyBalance.set(dayTime, b.balance);
     });
-    
+
     return Array.from(dailyBalance.entries())
         .map(([time, balance]) => ({ time, balance }))
         .sort((a, b) => a.time - b.time);
@@ -519,11 +528,11 @@ export function getEquityCurve(exchange: ExchangeType = 'bitmex'): { time: numbe
 export function getFundingHistory(exchange: ExchangeType = 'bitmex'): { time: number; amount: number; cumulative: number }[] {
     const wallet = loadWalletHistoryFromCSV(exchange);
     const SAT_TO_BTC = 100000000;
-    
+
     const fundingTxs = wallet
         .filter(w => w.transactType === 'Funding' && w.transactStatus === 'Completed')
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    
+
     let cumulative = 0;
     return fundingTxs.map(w => {
         cumulative += w.amount / SAT_TO_BTC;

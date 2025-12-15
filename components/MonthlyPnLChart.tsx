@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi } from 'lightweight-charts';
+import { ExchangeType } from '@/lib/exchange_types';
 
 interface MonthlyData {
     month: string;
@@ -12,7 +13,7 @@ interface MonthlyData {
 
 interface MonthlyPnLChartProps {
     data: MonthlyData[];
-    exchange?: 'bitmex' | 'binance';
+    exchange?: ExchangeType;
 }
 
 export function MonthlyPnLChart({ data, exchange = 'bitmex' }: MonthlyPnLChartProps) {
